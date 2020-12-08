@@ -5,8 +5,8 @@ DST=$PWD/install_linux
 mkdir -p ${DST}
 
 # msvc-x64
-echo configure linux 64-bit
-bash configure --prefix="${DST}" --enable-shared --disable-static --enable-asm --disable-doc 
+echo configure linux STATIC 64-bit
+bash configure --prefix="${DST}" --disable-programs --enable-asm --disable-doc --disable-debug
 
 # Build and install
 make -j8
