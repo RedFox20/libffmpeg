@@ -16,9 +16,13 @@ class libav(mama.BuildTarget):
     def package(self):
         if self.linux:
             self.export_include('linux64/include')
-            self.export_libs('linux64/lib', ['.a'], src_dir=True)
+            self.export_libs('linux64/lib', ['.a'], src_dir=True, order=[
+                'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
+            ])
             self.export_syslib('lzma', 'liblzma-dev')
             self.export_syslib('X11', 'libx11-dev')
+            self.export_syslib('vdpau', 'libvdpau-dev')
+            self.export_syslib('va', 'libva-dev')
         elif self.windows:
             if self.config.is_target_arch_x86():
                 self.export_include('win32/include')
