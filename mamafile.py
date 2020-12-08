@@ -18,6 +18,7 @@ class libav(mama.BuildTarget):
             self.export_include('linux64/include')
             self.export_libs('linux64/lib', ['.a'], src_dir=True)
             self.export_syslib('lzma', 'liblzma-dev')
+            self.export_syslib('X11', 'libx11-dev')
         elif self.windows:
             if self.config.is_target_arch_x86():
                 self.export_include('win32/include')
