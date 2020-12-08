@@ -23,6 +23,7 @@ class libav(mama.BuildTarget):
             self.export_syslib('X11', 'libx11-dev')
             self.export_syslib('vdpau', 'libvdpau-dev')
             self.export_syslib('va', 'libva-dev')
+            self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
         elif self.windows:
             if self.config.is_target_arch_x86():
                 self.export_include('win32/include')
