@@ -3,7 +3,7 @@ import mama
 ##
 # Explore Mama docs at https://github.com/RedFox20/Mama
 #
-class libav(mama.BuildTarget):
+class libffmpeg(mama.BuildTarget):
 
     workspace = 'build'
 
