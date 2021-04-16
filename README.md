@@ -1,2 +1,2 @@
-# libav
-LibAV prebuilt binaries for windows with MamaBuild support
+# libffmpeg
+libffmpeg prebuilt binaries for windows and linux with MamaBuild support
