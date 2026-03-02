@@ -1,0 +1,14 @@
+prefix=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux
+exec_prefix=${prefix}
+libdir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux/lib
+includedir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux/include
+
+Name: libavformat
+Description: FFmpeg container format library
+Version: 62.3.101
+Requires: libavcodec >= 62.11.100, libswresample >= 6.1.100, libavutil >= 60.8.100
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavformat -lm -latomic -lbz2 -lz
+Libs.private: 
+Cflags: -I${includedir}

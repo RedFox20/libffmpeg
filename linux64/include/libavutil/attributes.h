@@ -110,7 +110,7 @@
  * scheduled for removal.
  */
 #ifndef AV_NOWARN_DEPRECATED
-#if AV_GCC_VERSION_AT_LEAST(4,6)
+#if AV_GCC_VERSION_AT_LEAST(4,6) || defined(__clang__)
 #    define AV_NOWARN_DEPRECATED(code) \
         _Pragma("GCC diagnostic push") \
         _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"") \
@@ -159,9 +159,11 @@
 #if defined(__GNUC__) || defined(__clang__)
 #    define av_builtin_constant_p __builtin_constant_p
 #    define av_printf_format(fmtpos, attrpos) __attribute__((__format__(__printf__, fmtpos, attrpos)))
+#    define av_scanf_format(fmtpos, attrpos) __attribute__((__format__(__scanf__, fmtpos, attrpos)))
 #else
 #    define av_builtin_constant_p(x) 0
 #    define av_printf_format(fmtpos, attrpos)
+#    define av_scanf_format(fmtpos, attrpos)
 #endif
 
 #if AV_GCC_VERSION_AT_LEAST(2,5) || defined(__clang__)
