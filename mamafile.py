@@ -27,7 +27,7 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('z', 'libz-dev')
         elif self.linux:
             self.export_include('linux64/include')
-            self.export_libs('linux64/lib', ['.a'], src_dir=True, order=[
+            self.export_libs('linux64/lib', ['.so'], src_dir=True, order=[
                 'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
             ])
             self.export_syslib('lzma', 'liblzma-dev')
@@ -38,8 +38,6 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('va-drm', 'libva-drm2')
             self.export_syslib('va-x11', 'libva-dev')
             self.export_syslib('drm', 'libdrm-dev')
-            self.export_syslib('x264', 'libx264-dev')
-            self.export_syslib('x265', 'libx265-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
         elif self.windows:
             if self.config.is_target_arch_x86():

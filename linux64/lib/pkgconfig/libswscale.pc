@@ -1,14 +1,14 @@
-prefix=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux
+prefix=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/linux64
 exec_prefix=${prefix}
-libdir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux/lib
-includedir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/FFmpeg/install_linux/include
+libdir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/linux64/lib
+includedir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/linux64/include
 
 Name: libswscale
 Description: FFmpeg image rescaling library
 Version: 9.1.100
-Requires: libavutil >= 60.8.100
-Requires.private: 
+Requires: 
+Requires.private: libavutil >= 60.8.100
 Conflicts:
-Libs: -L${libdir}  -lswscale -lm -latomic
-Libs.private: 
+Libs: -L${libdir}  -lswscale 
+Libs.private: -lm -latomic
 Cflags: -I${includedir}
