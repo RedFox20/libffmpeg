@@ -2,3 +2,6 @@ mama.cmake
 FFmpeg/
 FFmpeg-*/
 share/
+_deps/
+x264/
+x265_git/

@@ -10,5 +10,5 @@ Requires:
 Requires.private: libswresample >= 6.1.100, libavutil >= 60.8.100
 Conflicts:
 Libs: -L${libdir}  -lavcodec 
-Libs.private: -pthread -lm -latomic -llzma -lx264 -lx265 -lz -lva
+Libs.private: -pthread -lm -latomic -llzma -L/home/jorma/krattcam/packages/libffmpeg/libffmpeg/linux64/_deps/lib -lx264 -lpthread -lm -ldl -L/home/jorma/krattcam/packages/libffmpeg/libffmpeg/linux64/_deps/lib -lx265 -lstdc++ -lm -lpthread -ldl -lz -lva
 Cflags: -I${includedir}

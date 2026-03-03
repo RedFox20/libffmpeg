@@ -1,17 +1,10 @@
 #!/bin/bash
+set -e
 
-if [ ! -d "FFmpeg-linux64" ]; then
-    git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git FFmpeg-linux64
-fi
-
-sudo apt-get install -y libx264-dev libx265-dev nasm libdrm-dev libbz2-dev
-
-# Don't install to system, install to a local folder
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 DST=$(realpath "${SCRIPT_DIR}/../linux64")
-mkdir -p ${DST}
-
-pushd FFmpeg-linux64
+DEPS="${DST}/_deps"
+mkdir -p "${DST}" "${DEPS}"
 
 function logStatus() { # as green text
     echo -e "\033[32m$1\033[0m"
@@ -20,7 +13,74 @@ function logError() { # as red text
     echo -e "\033[31m$1\033[0m"
 }
 
+sudo apt-get install -y nasm libdrm-dev libbz2-dev cmake
+
+###################################################
+# Build x264 from source as a static library
+###################################################
+if [ ! -f "${DEPS}/lib/libx264.a" ]; then
+    logStatus "Building x264 from source..."
+    if [ ! -d "x264" ]; then
+        git clone --depth 1 https://code.videolan.org/videolan/x264.git
+    fi
+    pushd x264
+    ./configure --prefix="${DEPS}" \
+        --enable-static \
+        --enable-pic \
+        --disable-cli
+    make -j$(nproc)
+    make install
+    popd
+fi
+
+###################################################
+# Build x265 from source as a static library
+###################################################
+if [ ! -f "${DEPS}/lib/libx265.a" ]; then
+    logStatus "Building x265 from source..."
+    if [ ! -d "x265_git" ]; then
+        git clone --depth 1 https://bitbucket.org/multicoreware/x265_git.git
+    fi
+    pushd x265_git/build/linux
+    cmake ../../source \
+        -DCMAKE_INSTALL_PREFIX="${DEPS}" \
+        -DENABLE_SHARED=OFF \
+        -DENABLE_CLI=OFF \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    make -j$(nproc)
+    make install
+    popd
+
+    # x265 CMake doesn't always install a pkg-config file, so create one
+    if [ ! -f "${DEPS}/lib/pkgconfig/x265.pc" ]; then
+        mkdir -p "${DEPS}/lib/pkgconfig"
+        cat > "${DEPS}/lib/pkgconfig/x265.pc" <<EOF
+prefix=${DEPS}
+exec_prefix=\${prefix}
+libdir=\${exec_prefix}/lib
+includedir=\${prefix}/include
+
+Name: x265
+Description: H.265/HEVC video encoder
+Version: 0.0
+Libs: -L\${libdir} -lx265 -lstdc++ -lm -lpthread -ldl
+Libs.private: -lstdc++ -lm -lpthread -ldl
+Cflags: -I\${includedir}
+EOF
+    fi
+fi
+
+###################################################
+# Build FFmpeg with statically linked x264/x265
+###################################################
+if [ ! -d "FFmpeg-linux64" ]; then
+    git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git FFmpeg-linux64
+fi
+
+pushd FFmpeg-linux64
+
 logStatus "Configure Linux 64-bit"
+export PKG_CONFIG_PATH="${DEPS}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 ./configure --prefix="${DST}" \
     --disable-programs \
     --disable-doc \
@@ -32,7 +92,9 @@ logStatus "Configure Linux 64-bit"
     --enable-nonfree \
     --enable-libx264 \
     --enable-libx265 \
-    --enable-libdrm
+    --enable-libdrm \
+    --extra-cflags="-I${DEPS}/include" \
+    --extra-ldflags="-L${DEPS}/lib"
 
 # Build and install
 logStatus "Starting build..."
@@ -55,17 +117,5 @@ for lib in "${DST}/lib/lib"*".so."*; do
         newname="${BASH_REMATCH[1]}"
         echo "Renaming $base to $newname"
         mv "$lib" "${DST}/lib/${newname}"
-    fi
-done
-
-# Bundle x264/x265 shared libs so we don't depend on the system's specific version
-for lib in libx264 libx265; do
-    src=$(ldconfig -p | grep "${lib}.so" | head -1 | awk '{print $NF}')
-    if [ -n "$src" ]; then
-        soname=$(readelf -d "$src" 2>/dev/null | grep SONAME | sed 's/.*\[\(.*\)\]/\1/')
-        echo "Bundling $soname from $src"
-        cp "$src" "${DST}/lib/${soname}"
-    else
-        logError "WARNING: ${lib}.so not found on system"
     fi
 done
