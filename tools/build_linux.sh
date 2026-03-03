@@ -57,3 +57,15 @@ for lib in "${DST}/lib/lib"*".so."*; do
         mv "$lib" "${DST}/lib/${newname}"
     fi
 done
+
+# Bundle x264/x265 shared libs so we don't depend on the system's specific version
+for lib in libx264 libx265; do
+    src=$(ldconfig -p | grep "${lib}.so" | head -1 | awk '{print $NF}')
+    if [ -n "$src" ]; then
+        soname=$(readelf -d "$src" 2>/dev/null | grep SONAME | sed 's/.*\[\(.*\)\]/\1/')
+        echo "Bundling $soname from $src"
+        cp "$src" "${DST}/lib/${soname}"
+    else
+        logError "WARNING: ${lib}.so not found on system"
+    fi
+done
