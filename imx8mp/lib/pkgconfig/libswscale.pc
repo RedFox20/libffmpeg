@@ -1,0 +1,14 @@
+prefix=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp
+exec_prefix=${prefix}
+libdir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp/lib
+includedir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp/include
+
+Name: libswscale
+Description: FFmpeg image rescaling library
+Version: 9.1.100
+Requires: 
+Requires.private: libavutil >= 60.8.100
+Conflicts:
+Libs: -L${libdir}  -lswscale 
+Libs.private: -lm -latomic
+Cflags: -I${includedir}

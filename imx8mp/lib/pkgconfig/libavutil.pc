@@ -1,0 +1,14 @@
+prefix=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp
+exec_prefix=${prefix}
+libdir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp/lib
+includedir=/home/jorma/krattcam/packages/libffmpeg/libffmpeg/imx8mp/include
+
+Name: libavutil
+Description: FFmpeg utility library
+Version: 60.8.100
+Requires: 
+Requires.private: 
+Conflicts:
+Libs: -L${libdir}  -lavutil 
+Libs.private: -lm -ldrm -latomic -pthread -lX11
+Cflags: -I${includedir}

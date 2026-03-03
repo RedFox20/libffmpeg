@@ -14,7 +14,18 @@ class libffmpeg(mama.BuildTarget):
         pass
 
     def package(self):
-        if self.linux:
+        if self.imx8mp:
+            self.export_include('imx8mp/include')
+            self.export_libs('imx8mp/lib', ['.so'], src_dir=True, order=[
+                'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
+            ])
+            self.export_syslib('m', 'libm-dev')
+            self.export_syslib('atomic', 'libatomic-dev')
+            self.export_syslib('drm', 'libdrm-dev')
+            self.export_syslib('lzma', 'liblzma-dev')
+            self.export_syslib('bz2', 'libbz2-dev')
+            self.export_syslib('z', 'libz-dev')
+        elif self.linux:
             self.export_include('linux64/include')
             self.export_libs('linux64/lib', ['.a'], src_dir=True, order=[
                 'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
