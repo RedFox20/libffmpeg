@@ -3,8 +3,7 @@ set -e
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 DST=$(realpath "${SCRIPT_DIR}/../linux64")
-DEPS="${DST}/_deps"
-mkdir -p "${DST}" "${DEPS}"
+mkdir -p "${DST}"
 
 function logStatus() { # as green text
     echo -e "\033[32m$1\033[0m"
@@ -18,13 +17,13 @@ sudo apt-get install -y nasm libdrm-dev libbz2-dev cmake
 ###################################################
 # Build x264 from source as a static library
 ###################################################
-if [ ! -f "${DEPS}/lib/libx264.a" ]; then
+if [ ! -f "${DST}/lib/libx264.a" ]; then
     logStatus "Building x264 from source..."
     if [ ! -d "x264" ]; then
         git clone --depth 1 https://code.videolan.org/videolan/x264.git
     fi
     pushd x264
-    ./configure --prefix="${DEPS}" \
+    ./configure --prefix="${DST}" \
         --enable-static \
         --enable-pic \
         --disable-cli
@@ -36,14 +35,14 @@ fi
 ###################################################
 # Build x265 from source as a static library
 ###################################################
-if [ ! -f "${DEPS}/lib/libx265.a" ]; then
+if [ ! -f "${DST}/lib/libx265.a" ]; then
     logStatus "Building x265 from source..."
     if [ ! -d "x265_git" ]; then
         git clone --depth 1 https://bitbucket.org/multicoreware/x265_git.git
     fi
     pushd x265_git/build/linux
     cmake ../../source \
-        -DCMAKE_INSTALL_PREFIX="${DEPS}" \
+        -DCMAKE_INSTALL_PREFIX="${DST}" \
         -DENABLE_SHARED=OFF \
         -DENABLE_CLI=OFF \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
@@ -52,10 +51,10 @@ if [ ! -f "${DEPS}/lib/libx265.a" ]; then
     popd
 
     # x265 CMake doesn't always install a pkg-config file, so create one
-    if [ ! -f "${DEPS}/lib/pkgconfig/x265.pc" ]; then
-        mkdir -p "${DEPS}/lib/pkgconfig"
-        cat > "${DEPS}/lib/pkgconfig/x265.pc" <<EOF
-prefix=${DEPS}
+    if [ ! -f "${DST}/lib/pkgconfig/x265.pc" ]; then
+        mkdir -p "${DST}/lib/pkgconfig"
+        cat > "${DST}/lib/pkgconfig/x265.pc" <<EOF
+prefix=${DST}
 exec_prefix=\${prefix}
 libdir=\${exec_prefix}/lib
 includedir=\${prefix}/include
@@ -80,21 +79,21 @@ fi
 pushd FFmpeg-linux64
 
 logStatus "Configure Linux 64-bit"
-export PKG_CONFIG_PATH="${DEPS}/lib/pkgconfig:${PKG_CONFIG_PATH}"
+export PKG_CONFIG_PATH="${DST}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 ./configure --prefix="${DST}" \
     --disable-programs \
     --disable-doc \
     --disable-debug \
-    --disable-static \
-    --enable-shared \
+    --enable-static \
+    --disable-shared \
     --enable-asm \
     --enable-gpl \
     --enable-nonfree \
     --enable-libx264 \
     --enable-libx265 \
     --enable-libdrm \
-    --extra-cflags="-I${DEPS}/include" \
-    --extra-ldflags="-L${DEPS}/lib"
+    --extra-cflags="-I${DST}/include" \
+    --extra-ldflags="-L${DST}/lib"
 
 # Build and install
 logStatus "Starting build..."

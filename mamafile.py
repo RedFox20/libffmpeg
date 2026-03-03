@@ -27,7 +27,7 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('z', 'libz-dev')
         elif self.linux:
             self.export_include('linux64/include')
-            self.export_libs('linux64/lib', ['.so'], src_dir=True, order=[
+            self.export_libs('linux64/lib', ['.a'], src_dir=True, order=[
                 'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
             ])
             self.export_syslib('lzma', 'liblzma-dev')
