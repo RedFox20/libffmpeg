@@ -1,10 +1,6 @@
 #!/bin/bash
 set -e
 
-SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-DST=$(realpath "${SCRIPT_DIR}/../linux64")
-mkdir -p "${DST}"
-
 function logStatus() { # as green text
     echo -e "\033[32m$1\033[0m"
 }
@@ -12,22 +8,27 @@ function logError() { # as red text
     echo -e "\033[31m$1\033[0m"
 }
 
-sudo apt-get install -y nasm libdrm-dev libbz2-dev cmake
+DST=${1:-"linux64"}
+DST=$(realpath "${DST}")
+mkdir -p "${DST}" "${DST}/lib" "${DST}/include"
+
+logStatus "Building inside: ${DST}"
+#sudo apt-get install -y nasm libdrm-dev libbz2-dev cmake
 
 ###################################################
 # Build x264 from source as a static library
 ###################################################
 if [ ! -f "${DST}/lib/libx264.a" ]; then
     logStatus "Building x264 from source..."
-    if [ ! -d "x264" ]; then
-        git clone --depth 1 https://code.videolan.org/videolan/x264.git
+    if [ ! -d "${DST}/x264" ]; then
+        git clone --depth 1 https://code.videolan.org/videolan/x264.git "${DST}/x264"
     fi
-    pushd x264
+    pushd "${DST}/x264"
     ./configure --prefix="${DST}" \
         --enable-static \
         --enable-pic \
         --disable-cli
-    make -j$(nproc)
+    make -j$(nproc) 2>&1 || [ -f libx264.a ] || { logError "x264 build failed"; exit 1; }
     make install
     popd
 fi
@@ -37,10 +38,10 @@ fi
 ###################################################
 if [ ! -f "${DST}/lib/libx265.a" ]; then
     logStatus "Building x265 from source..."
-    if [ ! -d "x265_git" ]; then
-        git clone --depth 1 https://bitbucket.org/multicoreware/x265_git.git
+    if [ ! -d "${DST}/x265" ]; then
+        git clone --depth 1 https://bitbucket.org/multicoreware/x265_git.git "${DST}/x265"
     fi
-    pushd x265_git/build/linux
+    pushd "${DST}/x265/build/linux"
     cmake ../../source \
         -DCMAKE_INSTALL_PREFIX="${DST}" \
         -DENABLE_SHARED=OFF \
@@ -72,11 +73,11 @@ fi
 ###################################################
 # Build FFmpeg with statically linked x264/x265
 ###################################################
-if [ ! -d "FFmpeg-linux64" ]; then
-    git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git FFmpeg-linux64
+if [ ! -d "${DST}/FFmpeg-linux64" ]; then
+    git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git "${DST}/FFmpeg-linux64"
 fi
 
-pushd FFmpeg-linux64
+pushd "${DST}/FFmpeg-linux64"
 
 logStatus "Configure Linux 64-bit"
 export PKG_CONFIG_PATH="${DST}/lib/pkgconfig:${PKG_CONFIG_PATH}"

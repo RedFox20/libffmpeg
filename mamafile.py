@@ -1,3 +1,4 @@
+import os
 import mama
 
 ##
@@ -8,10 +9,16 @@ class libffmpeg(mama.BuildTarget):
     workspace = 'build'
 
     def dependencies(self):
-        self.nothing_to_build()
+        if not self.linux:
+            self.nothing_to_build()
 
     def configure(self):
         pass
+
+    def build(self):
+        if self.linux:
+            if not os.path.exists(self.build_dir('lib/libavcodec.a')):
+                self.run(f'./tools/build_linux.sh "{self.build_dir()}"', src_dir=True)
 
     def package(self):
         if self.imx8mp:
@@ -26,8 +33,8 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('bz2', 'libbz2-dev')
             self.export_syslib('z', 'libz-dev')
         elif self.linux:
-            self.export_include('linux64/include')
-            self.export_libs('linux64/lib', ['.a'], src_dir=True, order=[
+            self.export_include('include', build_dir=True)
+            self.export_libs('lib', ['.a'], build_dir=True, order=[
                 'libavdevice', 'libavformat', 'libavfilter', 'libavcodec', 'libswresample', 'libswscale', 'libavutil'
             ])
             self.export_syslib('lzma', 'liblzma-dev')
