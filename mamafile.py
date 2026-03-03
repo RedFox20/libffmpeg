@@ -38,6 +38,8 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('va-drm', 'libva-drm2')
             self.export_syslib('va-x11', 'libva-dev')
             self.export_syslib('drm', 'libdrm-dev')
+            self.export_syslib('z', 'libz-dev')
+            self.export_syslib('m', 'libm-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
         elif self.windows:
             if self.config.is_target_arch_x86():
