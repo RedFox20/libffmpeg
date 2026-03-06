@@ -30,7 +30,7 @@ pushd FFmpeg-imx8mp
     logStatus "Configure IMX Yocto ARMv8"
     # Use the CC/CXX/LD/AR/NM/STRIP variables set by the Yocto SDK environment
     # instead of --cross-prefix, which may not resolve to the correct tools
-    ./configure \
+    TERM=dumb ./configure \
         --enable-cross-compile \
         --cc="${CC}" \
         --cxx="${CXX}" \

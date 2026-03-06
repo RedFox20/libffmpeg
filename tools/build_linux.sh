@@ -81,7 +81,8 @@ pushd "${DST}/FFmpeg-linux64"
 
 logStatus "Configure Linux 64-bit"
 export PKG_CONFIG_PATH="${DST}/lib/pkgconfig:${PKG_CONFIG_PATH}"
-./configure --prefix="${DST}" \
+# use TERM=dumb for avoiding CI failure
+TERM=dumb ./configure --prefix="${DST}" \
     --disable-programs \
     --disable-doc \
     --disable-debug \
