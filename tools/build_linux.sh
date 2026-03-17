@@ -73,7 +73,8 @@ fi
 ###################################################
 # Build FFmpeg with statically linked x264/x265
 ###################################################
-if [ ! -d "${DST}/FFmpeg-linux64" ]; then
+if [ ! -d "${DST}/FFmpeg-linux64" ] || [ ! -f "${DST}/FFmpeg-linux64/configure" ]; then
+    rm -rf "${DST}/FFmpeg-linux64"
     git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git "${DST}/FFmpeg-linux64"
 fi
 
@@ -94,6 +95,8 @@ TERM=dumb ./configure --prefix="${DST}" \
     --enable-libx264 \
     --enable-libx265 \
     --enable-libdrm \
+    --disable-sndio \
+    --disable-alsa \
     --extra-cflags="-I${DST}/include" \
     --extra-ldflags="-L${DST}/lib"
 

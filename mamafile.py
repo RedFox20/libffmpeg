@@ -39,13 +39,17 @@ class libffmpeg(mama.BuildTarget):
             ])
             self.export_syslib('lzma', 'liblzma-dev')
             self.export_syslib('bz2', 'libbz2-dev')
-            self.export_syslib('X11', 'libx11-dev')
-            self.export_syslib('vdpau', 'libvdpau-dev')
-            self.export_syslib('va', 'libva-dev')
-            self.export_syslib('va-drm', 'libva-drm2')
-            self.export_syslib('va-x11', 'libva-dev')
-            self.export_syslib('drm', 'libdrm-dev')
             self.export_syslib('z', 'libz-dev')
+            self.export_syslib('xcb-shm', 'libxcb-shm0-dev')     # X11: xcb-shm before xcb
+            self.export_syslib('xcb', 'libxcb1-dev')
+            self.export_syslib('Xv', 'libxv-dev')                 # Xv/Xext before X11
+            self.export_syslib('Xext', 'libxext-dev')
+            self.export_syslib('X11', 'libx11-dev')
+            self.export_syslib('vdpau', 'libvdpau-dev')          # Video accel
+            self.export_syslib('va-x11', 'libva-dev')            # VA-API: x11/drm before va
+            self.export_syslib('va-drm', 'libva-drm2')
+            self.export_syslib('va', 'libva-dev')
+            self.export_syslib('drm', 'libdrm-dev')
             self.export_syslib('m', 'libm-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
         elif self.windows:

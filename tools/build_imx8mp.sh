@@ -1,7 +1,8 @@
 #!/bin/bash
 set -e
 
-if [ ! -d "FFmpeg-imx8mp" ]; then
+if [ ! -d "FFmpeg-imx8mp" ] || [ ! -f "FFmpeg-imx8mp/configure" ]; then
+    rm -rf FFmpeg-imx8mp
     git clone --branch release/8.0 --depth 1 https://github.com/FFmpeg/FFmpeg.git FFmpeg-imx8mp
 fi
 
