@@ -18,7 +18,12 @@ class libffmpeg(mama.BuildTarget):
     def build(self):
         if self.linux:
             if not os.path.exists(self.build_dir('lib/libavcodec.a')):
-                self.run(f'./tools/build_linux.sh "{self.build_dir()}"', src_dir=True)
+                # Build x264/x265/FFmpeg with the SAME compiler and C++ runtime as the rest
+                # of the build so the static libs (notably the C++ libx265) link into krattcam.
+                # mama forces -stdlib=libc++ for clang, so a gcc/libstdc++ x265 won't link there.
+                cc, cxx, _ = self.config.get_preferred_compiler_paths()
+                stdlib = 'libc++' if self.config.clang else 'libstdc++'
+                self.run(f'./tools/build_linux.sh "{self.build_dir()}" "{cc}" "{cxx}" "{stdlib}"', src_dir=True)
 
     def package(self):
         if self.imx8mp:

@@ -12,7 +12,21 @@ DST=${1:-"linux64"}
 DST=$(realpath "${DST}")
 mkdir -p "${DST}" "${DST}/lib" "${DST}/include"
 
-logStatus "Building inside: ${DST}"
+# Compiler + C++ runtime, passed by mamafile.py so x264/x265/FFmpeg match the rest of the
+# build. Defaults keep direct invocation working. mama uses -stdlib=libc++ for clang, so the
+# C++ libx265 must be built the same way or it won't link into a libc++ krattcam.
+CC_BIN=${2:-gcc}
+CXX_BIN=${3:-g++}
+STDLIB=${4:-libstdc++}          # libstdc++ (gcc) or libc++ (clang)
+if [ "${STDLIB}" = "libc++" ]; then
+    CXX_STDLIB_FLAG="-stdlib=libc++"
+    CXX_RUNTIME_LIBS="-lc++ -lc++abi"   # x265's C++ deps for downstream/FFmpeg link tests
+else
+    CXX_STDLIB_FLAG=""
+    CXX_RUNTIME_LIBS="-lstdc++"
+fi
+
+logStatus "Building inside: ${DST} (cc=${CC_BIN} cxx=${CXX_BIN} stdlib=${STDLIB})"
 #sudo apt-get install -y nasm libdrm-dev libbz2-dev cmake
 
 ###################################################
@@ -24,7 +38,7 @@ if [ ! -f "${DST}/lib/libx264.a" ]; then
         git clone -q --depth 1 https://code.videolan.org/videolan/x264.git "${DST}/x264"
     fi
     pushd "${DST}/x264"
-    ./configure --prefix="${DST}" \
+    CC="${CC_BIN}" ./configure --prefix="${DST}" \
         --enable-static \
         --enable-pic \
         --disable-cli
@@ -42,10 +56,17 @@ if [ ! -f "${DST}/lib/libx265.a" ]; then
         git clone -q --depth 1 https://bitbucket.org/multicoreware/x265_git.git "${DST}/x265"
     fi
     pushd "${DST}/x265/build/linux"
+    # ENABLE_LIBNUMA=OFF: x265 otherwise auto-links libnuma when libnuma-dev is present,
+    # leaving numa_* refs the downstream krattcam link doesn't provide (and the prebuilt
+    # gcc package has no numa either — keep source builds consistent with it).
     cmake ../../source \
         -DCMAKE_INSTALL_PREFIX="${DST}" \
+        -DCMAKE_C_COMPILER="${CC_BIN}" \
+        -DCMAKE_CXX_COMPILER="${CXX_BIN}" \
+        -DCMAKE_CXX_FLAGS="${CXX_STDLIB_FLAG}" \
         -DENABLE_SHARED=OFF \
         -DENABLE_CLI=OFF \
+        -DENABLE_LIBNUMA=OFF \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     make -j$(nproc)
     make install
@@ -57,15 +78,12 @@ fi
 # deleting it — no need to rebuild x265. FFmpeg's configure needs two things here:
 #   1. Version = the real X265_BUILD number (in x265_config.h) to satisfy its
 #      `x265 >= NN` pkg-config gate; a placeholder like 0.0 fails detection.
-#   2. When libnuma-dev is present x265 auto-links libnuma, leaving undefined numa_*
-#      refs in the static lib; -lnuma must be in Libs so FFmpeg's non-static link
-#      test resolves them, else it reports "x265 not found using pkg-config".
+#   2. libx265 is C++, so the link test needs the C++ runtime: -lstdc++ for gcc,
+#      -lc++ -lc++abi for clang/libc++. Wrong runtime => "x265 not found using pkg-config".
 if [ -f "${DST}/lib/libx265.a" ] && [ ! -f "${DST}/lib/pkgconfig/x265.pc" ]; then
     mkdir -p "${DST}/lib/pkgconfig"
     X265BUILD=$(grep -rhoP '#define\s+X265_BUILD\s+\K[0-9]+' "${DST}/include/x265_config.h" "${DST}/include/x265.h" 2>/dev/null | head -1)
     : "${X265BUILD:=68}"  # fallback: minimum that satisfies FFmpeg's `x265 >= 68`
-    X265NUMA=""
-    if nm -u "${DST}/lib/libx265.a" 2>/dev/null | grep -q 'numa_'; then X265NUMA=" -lnuma"; fi
     cat > "${DST}/lib/pkgconfig/x265.pc" <<EOF
 prefix=${DST}
 exec_prefix=\${prefix}
@@ -75,8 +93,8 @@ includedir=\${prefix}/include
 Name: x265
 Description: H.265/HEVC video encoder
 Version: ${X265BUILD}
-Libs: -L\${libdir} -lx265 -lstdc++ -lm -lpthread -ldl${X265NUMA}
-Libs.private: -lstdc++ -lm -lpthread -ldl${X265NUMA}
+Libs: -L\${libdir} -lx265 ${CXX_RUNTIME_LIBS} -lm -lpthread -ldl
+Libs.private: ${CXX_RUNTIME_LIBS} -lm -lpthread -ldl
 Cflags: -I\${includedir}
 EOF
 fi
@@ -95,6 +113,8 @@ logStatus "Configure Linux 64-bit"
 export PKG_CONFIG_PATH="${DST}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 # use TERM=dumb for avoiding CI failure
 TERM=dumb ./configure --prefix="${DST}" \
+    --cc="${CC_BIN}" \
+    --cxx="${CXX_BIN}" \
     --disable-programs \
     --disable-doc \
     --disable-debug \
@@ -109,7 +129,7 @@ TERM=dumb ./configure --prefix="${DST}" \
     --disable-sndio \
     --disable-alsa \
     --extra-cflags="-I${DST}/include" \
-    --extra-ldflags="-L${DST}/lib"
+    --extra-ldflags="-L${DST}/lib ${CXX_STDLIB_FLAG}"
 
 # Build and install
 logStatus "Starting build..."
