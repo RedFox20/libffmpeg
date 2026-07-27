@@ -15,7 +15,11 @@ echo "Installing to ${DST}"
 pushd FFmpeg-imx8mp
 
 (
-    source /opt/imdt-imx-xwayland/5.0.4/environment-setup-cortexa53-crypto-poky-linux
+    if [[ -f /opt/imx8mp-sdk/environment-setup-cortexa53-crypto-poky-linux ]]; then
+        source /opt/imx8mp-sdk/environment-setup-cortexa53-crypto-poky-linux
+    else # fallback to default IMDT IMX toolchain instead:
+        source /opt/imdt-imx-xwayland/5.0.4/environment-setup-cortexa53-crypto-poky-linux
+    fi
     echo CC=$CC
     echo SDKTARGETSYSROOT=$SDKTARGETSYSROOT
     echo CFLAGS=$CFLAGS

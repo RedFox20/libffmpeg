@@ -34,7 +34,8 @@ logStatus "Building inside: ${DST} (cc=${CC_BIN} cxx=${CXX_BIN} stdlib=${STDLIB}
 ###################################################
 if [ ! -f "${DST}/lib/libx264.a" ]; then
     logStatus "Building x264 from source..."
-    if [ ! -d "${DST}/x264" ]; then
+    if [[ ! -f "${DST}/x264/configure" ]]; then
+        rm -rf "${DST}/x264"
         git clone -q --depth 1 https://code.videolan.org/videolan/x264.git "${DST}/x264"
     fi
     pushd "${DST}/x264"
@@ -52,7 +53,8 @@ fi
 ###################################################
 if [ ! -f "${DST}/lib/libx265.a" ]; then
     logStatus "Building x265 from source..."
-    if [ ! -d "${DST}/x265" ]; then
+    if [ ! -f "${DST}/x265/CMakeLists.txt" ]; then
+        rm -rf "${DST}/x265"
         git clone -q --depth 1 https://bitbucket.org/multicoreware/x265_git.git "${DST}/x265"
     fi
     pushd "${DST}/x265/build/linux"
