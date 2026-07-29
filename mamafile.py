@@ -8,6 +8,11 @@ class libffmpeg(mama.BuildTarget):
 
     workspace = 'build'
 
+    def settings(self):
+        # Literal so the artifactory shim can predict the archive name pre-clone. The `lgpl` arg
+        # separates the two profiles via mama's variant suffix, so it must NOT be encoded here.
+        self.version = '8.0.1'
+
     def dependencies(self):
         if not self.linux:
             self.nothing_to_build()
@@ -23,7 +28,10 @@ class libffmpeg(mama.BuildTarget):
                 # mama forces -stdlib=libc++ for clang, so a gcc/libstdc++ x265 won't link there.
                 cc, cxx, _ = self.config.get_preferred_compiler_paths()
                 stdlib = 'libc++' if self.config.clang else 'libstdc++'
-                self.run(f'./tools/build_linux.sh "{self.build_dir()}" "{cc}" "{cxx}" "{stdlib}"', src_dir=True)
+                lgpl = ' --lgpl' if 'lgpl' in self.args else ''
+                self.run(f'python3 ./tools/ffmpeg_build.py --platform linux'
+                         f' --prefix "{self.build_dir()}" --cc "{cc}" --cxx "{cxx}"'
+                         f' --stdlib "{stdlib}"{lgpl}', src_dir=True)
 
     def package(self):
         if self.imx8mp:
