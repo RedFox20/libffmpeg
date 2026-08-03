@@ -76,8 +76,13 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('m', 'libm-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
         elif self.windows:
-            # The consumer links the Media Foundation system libs itself. mama exports a
-            # syslib on UNIX only, so libffmpeg cannot do it here.
             self.export_include('include', build_dir=True)
             self.export_libs('lib', ['.lib'], build_dir=True, order=LIBAV_ORDER)
+            # Media Foundation, which the dshow and mf codepaths need.
+            self.export_syslib('mfplat')
+            self.export_syslib('mfuuid')
+            self.export_syslib('strmiids')
+            self.export_syslib('ole32')
+            self.export_syslib('user32')
+            self.export_syslib('bcrypt')
 
