@@ -9,16 +9,24 @@ Two license profiles. The default is the full GPL build krattcam and opencv have
 --lgpl drops x264/x265 and enables hardware decode instead: KrattGCS only ever decodes (native
 LGPL h264/hevc) and encodes MJPEG, so GPL would buy it nothing and constrain redistribution.
 
+Windows builds MSVC static libs through MSYS2 bash, because FFmpeg's configure needs a shell.
+It supports the --lgpl profile only. x264 and x265 have no MSVC path here, and no windows
+consumer wants an encoder.
+
   ffmpeg_build.py --platform linux --prefix <dir> [--cc gcc] [--cxx g++]
                   [--stdlib libstdc++|libc++] [--lgpl] [--sdk <yocto env-setup>] [--jobs N]
+  ffmpeg_build.py --platform windows --prefix <dir> --lgpl [--vcvars <vcvars64.bat>] [--msys <bash.exe>]
 """
-import argparse, os, re, shutil, subprocess, sys
+import argparse, os, re, shlex, shutil, subprocess, sys
 from pathlib import Path
 
 X264_URL = 'https://code.videolan.org/videolan/x264.git'
 X265_URL = 'https://bitbucket.org/multicoreware/x265_git.git'
 FFMPEG_URL = 'https://github.com/FFmpeg/FFmpeg.git'
-FFMPEG_BRANCH = 'release/8.0'
+# A tag, not a branch: release/8.0 moves to 8.0.2 and up, and mamafile.py states version 8.0.1.
+FFMPEG_TAG = 'n8.0.1'
+
+MSYS2_BASH_PATHS = [r'C:\msys64\usr\bin\bash.exe', r'C:\msys2\usr\bin\bash.exe']
 
 # FFmpeg's configure gate is `x265 >= 68`, so a synthesized .pc must never fall below it.
 X265_BUILD_FALLBACK = 68
@@ -36,12 +44,18 @@ def run(cmd, cwd=None, env=None, shell=False):
         sys.exit(status)
 
 
-def shallow_clone(url, dst: Path, branch=None):
+def shallow_clone(url, dst: Path, branch=None, attempts=3):
+    """Clone once, and retry: a github or gitlab clone fails intermittently, which is what makes an
+    unattended build flaky. A failed clone leaves a partial dir, so delete it before the retry."""
     if (dst / '.git').exists(): return
-    log(f'Cloning {url} -> {dst}')
     cmd = ['git', 'clone', '-q', '--depth', '1']
     if branch: cmd += ['--branch', branch]
-    run(cmd + [url, str(dst)])
+    for attempt in range(1, attempts + 1):
+        log(f'Cloning {url} -> {dst}' + (f' (attempt {attempt}/{attempts})' if attempt > 1 else ''))
+        if subprocess.run(cmd + [url, str(dst)]).returncode == 0: return
+        shutil.rmtree(dst, ignore_errors=True)
+    err(f'FAILED to clone {url} after {attempts} attempts')
+    sys.exit(1)
 
 
 def cxx_runtime(stdlib: str):
@@ -106,11 +120,22 @@ Cflags: -I${{includedir}}
 
 
 def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
-    """configure flags shared by every backend, plus the profile and platform specific ones."""
+    """configure flags shared by every backend, plus the profile and platform specific ones.
+    Each list entry is ONE argv entry, unquoted. A shell backend must quote them itself."""
     flags = ['--disable-programs', '--disable-doc', '--disable-debug',
              '--enable-static', '--disable-shared', '--enable-asm']
-    if args.platform != 'windows':
+    extra_cflags, extra_ldflags = [], []
+    if args.platform == 'windows':
+        # No --target-os: --toolchain=msvc already forces it to win32, which overrides the
+        # MSYS detection that configure otherwise refuses to build with.
+        # -Zi writes a PDB, -FS serializes the parallel writes into it.
+        flags += ['--toolchain=msvc', '--arch=x86_64', '--enable-w32threads']
+        extra_cflags += ['-Zi', '-FS']
+    else:
         flags += ['--disable-sndio', '--disable-alsa', f'--cc={args.cc}', f'--cxx={args.cxx}']
+        extra_cflags += [f'-I{prefix}/include']
+        extra_ldflags += [f'-L{prefix}/lib']
+        if stdlib_flag: extra_ldflags.append(stdlib_flag)
 
     if args.lgpl:
         # No x264/x265: KrattGCS decodes only and encodes MJPEG, both native LGPL. Decode speed
@@ -122,8 +147,8 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         flags += ['--enable-gpl', '--enable-nonfree', '--enable-libx264', '--enable-libx265',
                   '--enable-libdrm']
 
-    flags += [f'--extra-cflags=-I{prefix}/include',
-              f'--extra-ldflags=-L{prefix}/lib {stdlib_flag}'.rstrip()]
+    if extra_cflags:  flags.append('--extra-cflags=' + ' '.join(extra_cflags))
+    if extra_ldflags: flags.append('--extra-ldflags=' + ' '.join(extra_ldflags))
     return flags
 
 
@@ -140,6 +165,62 @@ def normalize_libs(prefix: Path):
             path.replace(lib / m.group(1))
 
 
+def to_msys_path(win_path: str) -> str:
+    """C:\\foo -> /c/foo, the only path form MSYS2 bash accepts."""
+    p = win_path.replace('\\', '/')
+    if len(p) >= 2 and p[1] == ':': p = '/' + p[0].lower() + p[2:]
+    return p
+
+
+def find_msys2_bash() -> str:
+    for path in MSYS2_BASH_PATHS:
+        if os.path.isfile(path): return path
+    err('Could not find MSYS2 bash. Install MSYS2, or pass --msys <path to bash.exe>.')
+    sys.exit(1)
+
+
+def find_vcvars64() -> str:
+    """vcvars64.bat of the newest Visual Studio. vswhere.exe reports where that is."""
+    vswhere = r'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    if os.path.isfile(vswhere):
+        out = subprocess.run([vswhere, '-latest', '-nologo', '-property', 'installationPath'],
+                             capture_output=True, text=True)
+        root = out.stdout.strip()
+        bat = os.path.join(root, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat')
+        if root and os.path.isfile(bat): return bat
+    err('Could not find vcvars64.bat. Install Visual Studio, or pass --vcvars <path>.')
+    sys.exit(1)
+
+
+def rename_static_libs(prefix: Path):
+    """configure keeps LIBPREF=lib and LIBSUF=.a even for MSVC, so rename to .lib in place."""
+    lib = prefix / 'lib'
+    if not lib.is_dir(): return
+    for path in lib.glob('*.a'):
+        path.replace(path.with_suffix('.lib'))
+
+
+def build_windows(args, prefix: Path):
+    if not args.lgpl:
+        err('--platform windows supports --lgpl only: x264 and x265 have no MSVC build path here.')
+        sys.exit(2)
+    vcvars = args.vcvars or find_vcvars64()
+    bash = args.msys or find_msys2_bash()
+    src = Path(args.src) if args.src else prefix / 'FFmpeg'
+    shallow_clone(FFMPEG_URL, src, FFMPEG_TAG)
+
+    log(f'Building in {prefix} (msvc, profile=lgpl)')
+    opts = ' '.join(shlex.quote(f) for f in ffmpeg_flags(args, prefix, ''))
+    script = (f"export PATH={to_msys_path(str(Path(bash).parent))}:$PATH"
+              f" && cd '{to_msys_path(str(src))}'"
+              f" && ./configure --prefix='{to_msys_path(str(prefix))}' {opts}"
+              f" && make -j{args.jobs} && make install")
+    # cmd runs vcvars64.bat first, so bash inherits cl.exe and link.exe through the environment.
+    run(f'call "{vcvars}" && set MSYSTEM=MSYS && "{bash}" -c "{script}"', shell=True)
+    rename_static_libs(prefix)
+    log('Done.')
+
+
 def build_linux(args, prefix: Path):
     stdlib_flag, runtime_libs = cxx_runtime(args.stdlib)
     log(f'Building in {prefix} (cc={args.cc} cxx={args.cxx} stdlib={args.stdlib} '
@@ -150,7 +231,7 @@ def build_linux(args, prefix: Path):
         write_x265_pc(prefix, runtime_libs)
 
     src = Path(args.src) if args.src else prefix / 'FFmpeg'
-    shallow_clone(FFMPEG_URL, src, FFMPEG_BRANCH)
+    shallow_clone(FFMPEG_URL, src, FFMPEG_TAG)
 
     env = {**os.environ, 'TERM': 'dumb',  # TERM=dumb: configure's progress output breaks CI logs
            'PKG_CONFIG_PATH': f'{prefix}/lib/pkgconfig:{os.environ.get("PKG_CONFIG_PATH", "")}'}
@@ -174,16 +255,18 @@ def main():
     p.add_argument('--stdlib', default='libstdc++', choices=['libstdc++', 'libc++'])
     p.add_argument('--lgpl', action='store_true', help='LGPLv3 decode profile, no x264/x265')
     p.add_argument('--sdk', help='imx8mp: Yocto environment-setup script')
+    p.add_argument('--vcvars', help='windows: vcvars64.bat; found through vswhere when omitted')
+    p.add_argument('--msys', help='windows: MSYS2 bash.exe; searched when omitted')
     p.add_argument('--jobs', type=int, default=os.cpu_count() or 4)
     args = p.parse_args()
 
     prefix = Path(args.prefix).resolve()
     for sub in ('', 'lib', 'include'): (prefix / sub).mkdir(parents=True, exist_ok=True)
 
-    if args.platform == 'linux':
-        build_linux(args, prefix)
+    if args.platform == 'linux':     build_linux(args, prefix)
+    elif args.platform == 'windows': build_windows(args, prefix)
     else:
-        err(f'--platform {args.platform} is not implemented yet (phase 2/4 of the unification plan)')
+        err(f'--platform {args.platform} is not implemented yet (phase 4 of the unification plan)')
         sys.exit(2)
 
 
