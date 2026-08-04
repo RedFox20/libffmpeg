@@ -17,7 +17,7 @@ consumer wants an encoder.
                   [--stdlib libstdc++|libc++] [--lgpl] [--sdk <yocto env-setup>] [--jobs N]
   ffmpeg_build.py --platform windows --prefix <dir> --lgpl [--vcvars <vcvars64.bat>] [--msys <bash.exe>]
 """
-import argparse, os, re, shlex, shutil, subprocess, sys
+import argparse, os, re, shlex, shutil, stat, subprocess, sys
 from pathlib import Path
 
 X264_URL = 'https://code.videolan.org/videolan/x264.git'
@@ -44,16 +44,44 @@ def run(cmd, cwd=None, env=None, shell=False):
         sys.exit(status)
 
 
+def force_rmtree(path: Path):
+    """Delete a tree that holds read-only files, and fail loudly if it survives. Git marks each
+    object file read-only, and windows then refuses the unlink. shutil.rmtree(ignore_errors=True)
+    hides that refusal and leaves a part of the tree, which is how a `.git` dir with no HEAD
+    reaches the next build."""
+    if not path.exists(): return
+    for root, dirs, files in os.walk(path):
+        for name in dirs + files:
+            try: os.chmod(os.path.join(root, name), stat.S_IWRITE)
+            except OSError: pass
+    shutil.rmtree(path)
+
+
+def is_complete_clone(dst: Path) -> bool:
+    """True only for a finished clone that owns `dst`. A `.git` test alone is not enough. A killed
+    clone, and a clean that a locked file interrupts, both leave a `.git` dir with no HEAD. Git
+    ignores such a dir and reports the first real repo above it, so `dst` looks cloned and stays
+    empty. The build then fails on a missing ./configure."""
+    if not (dst / '.git').exists(): return False
+    out = subprocess.run(['git', '-C', str(dst), 'rev-parse', '--show-toplevel', 'HEAD'],
+                         capture_output=True, text=True)
+    if out.returncode != 0: return False
+    toplevel = out.stdout.splitlines()[0].strip()
+    return bool(toplevel) and Path(toplevel) == dst.resolve()
+
+
 def shallow_clone(url, dst: Path, branch=None, attempts=3):
     """Clone once, and retry: a github or gitlab clone fails intermittently, which is what makes an
     unattended build flaky. A failed clone leaves a partial dir, so delete it before the retry."""
-    if (dst / '.git').exists(): return
+    if is_complete_clone(dst): return
+    # git clone refuses a dst that exists and is not empty, so remove the remains of a dead clone.
+    force_rmtree(dst)
     cmd = ['git', 'clone', '-q', '--depth', '1']
     if branch: cmd += ['--branch', branch]
     for attempt in range(1, attempts + 1):
         log(f'Cloning {url} -> {dst}' + (f' (attempt {attempt}/{attempts})' if attempt > 1 else ''))
         if subprocess.run(cmd + [url, str(dst)]).returncode == 0: return
-        shutil.rmtree(dst, ignore_errors=True)
+        force_rmtree(dst)
     err(f'FAILED to clone {url} after {attempts} attempts')
     sys.exit(1)
 
