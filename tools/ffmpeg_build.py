@@ -129,8 +129,13 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         # No --target-os: --toolchain=msvc already forces it to win32, which overrides the
         # MSYS detection that configure otherwise refuses to build with.
         # -Zi writes a PDB, -FS serializes the parallel writes into it.
+        # -MD selects the DLL CRT. cl defaults to the static CRT and writes a
+        # /DEFAULTLIB:LIBCMT directive into every object. Consumers use the DLL CRT, so a
+        # static-CRT libav* gives each of their executables LNK4098: defaultlib LIBCMT
+        # conflicts with use of other libs. This is the release CRT, because one build dir
+        # holds one profile per platform. A debug consumer already links these release libs.
         flags += ['--toolchain=msvc', '--arch=x86_64', '--enable-w32threads']
-        extra_cflags += ['-Zi', '-FS']
+        extra_cflags += ['-Zi', '-FS', '-MD']
     else:
         flags += ['--disable-sndio', '--disable-alsa', f'--cc={args.cc}', f'--cxx={args.cxx}']
         extra_cflags += [f'-I{prefix}/include']
