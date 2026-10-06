@@ -85,4 +85,9 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('ole32')
             self.export_syslib('user32')
             self.export_syslib('bcrypt')
+            # FFmpeg configure autodetects schannel, so libavformat holds tls_schannel.o
+            # and needs the schannel_extralibs below.
+            self.export_syslib('secur32')
+            self.export_syslib('ncrypt')
+            self.export_syslib('crypt32')
 
