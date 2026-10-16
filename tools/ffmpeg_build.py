@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build FFmpeg from source into a mama build dir, for linux, windows or imx8mp.
+"""Build FFmpeg from source into a mama build dir, for linux, windows, oclea or imx8mp.
 
 FFmpeg's configure generates config.h and libavutil/avconfig.h per target, so headers from one
 platform are unusable on another. Every backend therefore installs into its own --prefix, which
@@ -16,6 +16,7 @@ consumer wants an encoder.
   ffmpeg_build.py --platform linux --prefix <dir> [--cc gcc] [--cxx g++]
                   [--stdlib libstdc++|libc++] [--lgpl] [--sdk <yocto env-setup>] [--jobs N]
   ffmpeg_build.py --platform windows --prefix <dir> --lgpl [--vcvars <vcvars64.bat>] [--msys <bash.exe>]
+  ffmpeg_build.py --platform oclea --prefix <dir> --cross-prefix <sdk>/aarch64-oclea-linux- --sysroot <dir>
 """
 import argparse, os, re, shlex, shutil, stat, subprocess, sys
 from pathlib import Path
@@ -93,13 +94,13 @@ def cxx_runtime(stdlib: str):
     return '', '-lstdc++'
 
 
-def build_x264(prefix: Path, cc: str, jobs: int):
+def build_x264(prefix: Path, cc: str, jobs: int, cross_flags=()):
     if (prefix / 'lib/libx264.a').exists(): return
     src = prefix / 'x264'
     shallow_clone(X264_URL, src)
     log('Building x264')
     env = {**os.environ, 'CC': cc}
-    run(['./configure', f'--prefix={prefix}', '--enable-static', '--enable-pic', '--disable-cli'],
+    run(['./configure', f'--prefix={prefix}', '--enable-static', '--enable-pic', '--disable-cli', *cross_flags],
         cwd=src, env=env)
     run(['make', f'-j{jobs}'], cwd=src, env=env)
     run(['make', 'install'], cwd=src, env=env)
@@ -164,6 +165,14 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         # holds one profile per platform. A debug consumer already links these release libs.
         flags += ['--toolchain=msvc', '--arch=x86_64', '--enable-w32threads']
         extra_cflags += ['-Zi', '-FS', '-MD']
+    elif args.platform == 'oclea':
+        # --disable-autodetect keeps the sysroot libraries out of the static libs, but it also drops pthreads.
+        # The SDK has no <cross-prefix>pkg-config, so the host one reads the x264.pc of the prefix.
+        flags += ['--enable-cross-compile', f'--cross-prefix={args.cross_prefix}', f'--sysroot={args.sysroot}',
+                  '--arch=aarch64', '--cpu=cortex-a53', '--target-os=linux', '--disable-autodetect',
+                  '--enable-pthreads', '--pkg-config=pkg-config']
+        extra_cflags += [f'-I{prefix}/include']
+        extra_ldflags += [f'-L{prefix}/lib']
     else:
         flags += ['--disable-sndio', '--disable-alsa', f'--cc={args.cc}', f'--cxx={args.cxx}']
         extra_cflags += [f'-I{prefix}/include']
@@ -176,6 +185,9 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         flags += ['--enable-version3']
         if args.platform == 'windows': flags += ['--enable-d3d11va', '--enable-dxva2']
         else:                          flags += ['--enable-vaapi', '--enable-vdpau', '--enable-libdrm']
+    elif args.platform == 'oclea':
+        # The DSP encodes the EO camera, so only the AT600 thermal camera encodes in software, in H.264
+        flags += ['--enable-gpl', '--enable-libx264']
     else:
         flags += ['--enable-gpl', '--enable-nonfree', '--enable-libx264', '--enable-libx265',
                   '--enable-libdrm']
@@ -263,13 +275,29 @@ def build_linux(args, prefix: Path):
         build_x265(prefix, args.cc, args.cxx, stdlib_flag, args.jobs)
         write_x265_pc(prefix, runtime_libs)
 
-    src = Path(args.src) if args.src else prefix / 'FFmpeg'
-    shallow_clone(FFMPEG_URL, src, FFMPEG_TAG)
-
     env = {**os.environ, 'TERM': 'dumb',  # TERM=dumb: configure's progress output breaks CI logs
            'PKG_CONFIG_PATH': f'{prefix}/lib/pkgconfig:{os.environ.get("PKG_CONFIG_PATH", "")}'}
+    install_ffmpeg(args, prefix, ffmpeg_flags(args, prefix, stdlib_flag), env)
+
+
+def build_oclea(args, prefix: Path):
+    """The CV25 SDK ships FFmpeg 5 without libx264, so the thermal camera links this static FFmpeg 8."""
+    if args.lgpl or not args.cross_prefix or not args.sysroot:
+        err('--platform oclea needs --cross-prefix and --sysroot, and has no --lgpl profile')
+        sys.exit(2)
+    log(f'Building in {prefix} (cross-prefix={args.cross_prefix} sysroot={args.sysroot})')
+    build_x264(prefix, f'{args.cross_prefix}gcc', args.jobs,
+               ['--host=aarch64-linux', f'--cross-prefix={args.cross_prefix}', f'--sysroot={args.sysroot}'])
+    # the x264.pc of the prefix, and no .pc file of the build host
+    env = {**os.environ, 'TERM': 'dumb', 'PKG_CONFIG_LIBDIR': f'{prefix}/lib/pkgconfig', 'PKG_CONFIG_PATH': ''}
+    install_ffmpeg(args, prefix, ffmpeg_flags(args, prefix, ''), env)
+
+
+def install_ffmpeg(args, prefix: Path, flags: list, env: dict):
+    src = Path(args.src) if args.src else prefix / 'FFmpeg'
+    shallow_clone(FFMPEG_URL, src, FFMPEG_TAG)
     log('Configuring FFmpeg')
-    run(['./configure', f'--prefix={prefix}'] + ffmpeg_flags(args, prefix, stdlib_flag), cwd=src, env=env)
+    run(['./configure', f'--prefix={prefix}'] + flags, cwd=src, env=env)
     log('Building FFmpeg')
     run(['make', f'-j{args.jobs}'], cwd=src, env=env)
     log(f'Installing to {prefix}')
@@ -280,7 +308,7 @@ def build_linux(args, prefix: Path):
 
 def main():
     p = argparse.ArgumentParser(description='Build FFmpeg from source into a mama build dir')
-    p.add_argument('--platform', required=True, choices=['linux', 'windows', 'imx8mp'])
+    p.add_argument('--platform', required=True, choices=['linux', 'windows', 'oclea', 'imx8mp'])
     p.add_argument('--prefix', required=True, help='install prefix, normally the mama build dir')
     p.add_argument('--src', help='existing FFmpeg source dir; cloned under --prefix when omitted')
     p.add_argument('--cc', default='gcc')
@@ -288,6 +316,8 @@ def main():
     p.add_argument('--stdlib', default='libstdc++', choices=['libstdc++', 'libc++'])
     p.add_argument('--lgpl', action='store_true', help='LGPLv3 decode profile, no x264/x265')
     p.add_argument('--sdk', help='imx8mp: Yocto environment-setup script')
+    p.add_argument('--cross-prefix', help='oclea: the SDK compiler prefix, such as .../aarch64-oclea-linux-')
+    p.add_argument('--sysroot', help='oclea: the target sysroot of the SDK')
     p.add_argument('--vcvars', help='windows: vcvars64.bat; found through vswhere when omitted')
     p.add_argument('--msys', help='windows: MSYS2 bash.exe; searched when omitted')
     p.add_argument('--jobs', type=int, default=os.cpu_count() or 4)
@@ -298,6 +328,7 @@ def main():
 
     if args.platform == 'linux':     build_linux(args, prefix)
     elif args.platform == 'windows': build_windows(args, prefix)
+    elif args.platform == 'oclea':   build_oclea(args, prefix)
     else:
         err(f'--platform {args.platform} is not implemented yet (phase 4 of the unification plan)')
         sys.exit(2)

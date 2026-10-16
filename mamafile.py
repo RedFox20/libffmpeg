@@ -20,7 +20,7 @@ class libffmpeg(mama.BuildTarget):
 
     def dependencies(self):
         # imx8mp still ships prebuilt .so files. Every other platform builds from source.
-        if not (self.linux or self.windows):
+        if not (self.linux or self.windows or self.oclea):
             self.nothing_to_build()
 
     def configure(self):
@@ -46,6 +46,12 @@ class libffmpeg(mama.BuildTarget):
                 self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform linux'
                          f' --prefix "{self.build_dir()}" --cc "{cc}" --cxx "{cxx}"'
                          f' --stdlib "{stdlib}"{lgpl}', src_dir=True)
+        elif self.oclea:
+            if not os.path.exists(self.build_dir('lib/libavcodec.a')):
+                # The SDK FFmpeg 5 has no libx264, so the CV25 thermal camera links this one statically
+                self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform oclea --prefix "{self.build_dir()}"'
+                         f' --cross-prefix "{self.oclea.gcc_prefix()}" --sysroot "{self.oclea.sysroot()}"'
+                         f' --jobs {self.config.jobs}', src_dir=True)
 
     def package(self):
         if self.imx8mp:
@@ -75,6 +81,13 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('drm', 'libdrm-dev')
             self.export_syslib('m', 'libm-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
+        elif self.oclea:
+            # libx264.a matches no LIBAV_ORDER name, so it links after libavcodec.a
+            self.export_include('include', build_dir=True)
+            self.export_libs('lib', ['.a'], build_dir=True, order=LIBAV_ORDER)
+            self.export_syslib('m')
+            self.export_syslib('dl')
+            self.export_syslib('pthread')
         elif self.windows:
             self.export_include('include', build_dir=True)
             self.export_libs('lib', ['.lib'], build_dir=True, order=LIBAV_ORDER)
