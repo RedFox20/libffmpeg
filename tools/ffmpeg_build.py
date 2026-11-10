@@ -15,11 +15,11 @@ consumer wants an encoder.
 
   ffmpeg_build.py --platform linux --prefix <dir> [--cc gcc] [--cxx g++]
                   [--stdlib libstdc++|libc++] [--lgpl] [--sdk <yocto env-setup>] [--jobs N]
-  ffmpeg_build.py --platform macos --prefix <dir> --lgpl [--cc clang] [--cxx clang++]
+  ffmpeg_build.py --platform macos --arch arm64|x64 --prefix <dir> --lgpl [--cc clang] [--cxx clang++]
   ffmpeg_build.py --platform windows --prefix <dir> --lgpl [--vcvars <vcvars64.bat>] [--msys <bash.exe>]
   ffmpeg_build.py --platform oclea --prefix <dir> --cross-prefix <sdk>/aarch64-oclea-linux- --sysroot <dir>
 """
-import argparse, os, re, shlex, shutil, stat, subprocess, sys
+import argparse, os, platform, re, shlex, shutil, stat, subprocess, sys
 from pathlib import Path
 
 X264_URL = 'https://code.videolan.org/videolan/x264.git'
@@ -149,6 +149,10 @@ Cflags: -I${{includedir}}
 ''')
 
 
+# mama arch -> (the clang -arch name, the FFmpeg --arch name)
+MACOS_ARCHES = {'arm64': ('arm64', 'aarch64'), 'x64': ('x86_64', 'x86_64')}
+
+
 def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
     """configure flags shared by every backend, plus the profile and platform specific ones.
     Each list entry is ONE argv entry, unquoted. A shell backend must quote them itself."""
@@ -179,6 +183,14 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         extra_cflags += [f'-I{prefix}/include']
         extra_ldflags += [f'-L{prefix}/lib']
         if stdlib_flag: extra_ldflags.append(stdlib_flag)
+        if args.platform == 'macos':
+            # Apple clang builds for the host arch by default, so name the target arch, also for x64 on Apple silicon
+            clang_arch, ffmpeg_arch = MACOS_ARCHES[args.arch]
+            flags += [f'--arch={ffmpeg_arch}', '--target-os=darwin']
+            extra_cflags += ['-arch', clang_arch]
+            extra_ldflags += ['-arch', clang_arch]
+            if platform.machine() != clang_arch:
+                flags.append('--enable-cross-compile')
 
     if args.lgpl:
         # No x264/x265: KrattGCS decodes only and encodes MJPEG, both native LGPL. Decode speed
@@ -327,6 +339,7 @@ def main():
     p.add_argument('--cxx', default='g++')
     p.add_argument('--stdlib', default='libstdc++', choices=['libstdc++', 'libc++'])
     p.add_argument('--lgpl', action='store_true', help='LGPLv3 decode profile, no x264/x265')
+    p.add_argument('--arch', choices=sorted(MACOS_ARCHES), default='arm64', help='macos: the target arch')
     p.add_argument('--sdk', help='imx8mp: Yocto environment-setup script')
     p.add_argument('--cross-prefix', help='oclea: the SDK compiler prefix, such as .../aarch64-oclea-linux-')
     p.add_argument('--sysroot', help='oclea: the target sysroot of the SDK')
