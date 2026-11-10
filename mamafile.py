@@ -50,7 +50,7 @@ class libffmpeg(mama.BuildTarget):
             if not os.path.exists(self.build_dir('lib/libavcodec.a')):
                 # macOS is decode only, hence --lgpl
                 cc, cxx, _ = self.config.get_preferred_compiler_paths()
-                self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform macos'
+                self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform macos --arch {self.config.arch}'
                          f' --prefix "{self.build_dir()}" --cc "{cc}" --cxx "{cxx}" --stdlib libc++ --lgpl',
                          src_dir=True)
         elif self.oclea:
