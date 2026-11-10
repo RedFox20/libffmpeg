@@ -20,7 +20,7 @@ class libffmpeg(mama.BuildTarget):
 
     def dependencies(self):
         # imx8mp still ships prebuilt .so files. Every other platform builds from source.
-        if not (self.linux or self.windows or self.oclea):
+        if not (self.linux or self.macos or self.windows or self.oclea):
             self.nothing_to_build()
 
     def configure(self):
@@ -46,6 +46,13 @@ class libffmpeg(mama.BuildTarget):
                 self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform linux'
                          f' --prefix "{self.build_dir()}" --cc "{cc}" --cxx "{cxx}"'
                          f' --stdlib "{stdlib}"{lgpl}', src_dir=True)
+        elif self.macos:
+            if not os.path.exists(self.build_dir('lib/libavcodec.a')):
+                # macOS is decode only, hence --lgpl
+                cc, cxx, _ = self.config.get_preferred_compiler_paths()
+                self.run(f'"{sys.executable}" ./tools/ffmpeg_build.py --platform macos'
+                         f' --prefix "{self.build_dir()}" --cc "{cc}" --cxx "{cxx}" --stdlib libc++ --lgpl',
+                         src_dir=True)
         elif self.oclea:
             if not os.path.exists(self.build_dir('lib/libavcodec.a')):
                 # The SDK FFmpeg 5 has no libx264, so the CV25 thermal camera links this one statically
@@ -81,6 +88,11 @@ class libffmpeg(mama.BuildTarget):
             self.export_syslib('drm', 'libdrm-dev')
             self.export_syslib('m', 'libm-dev')
             self.export_syslib('c')  # NOTE: current libffmpeg built with glibc: libc.so
+        elif self.macos:
+            self.export_include('include', build_dir=True)
+            self.export_libs('lib', ['.a'], build_dir=True, order=LIBAV_ORDER)
+            for framework in ('VideoToolbox', 'CoreMedia', 'CoreVideo', 'CoreFoundation', 'CoreServices'):
+                self.export_syslib(f'-framework {framework}')
         elif self.oclea:
             # libx264.a matches no LIBAV_ORDER name, so it links after libavcodec.a
             self.export_include('include', build_dir=True)

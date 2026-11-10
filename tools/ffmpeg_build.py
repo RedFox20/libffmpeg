@@ -15,6 +15,7 @@ consumer wants an encoder.
 
   ffmpeg_build.py --platform linux --prefix <dir> [--cc gcc] [--cxx g++]
                   [--stdlib libstdc++|libc++] [--lgpl] [--sdk <yocto env-setup>] [--jobs N]
+  ffmpeg_build.py --platform macos --prefix <dir> --lgpl [--cc clang] [--cxx clang++]
   ffmpeg_build.py --platform windows --prefix <dir> --lgpl [--vcvars <vcvars64.bat>] [--msys <bash.exe>]
   ffmpeg_build.py --platform oclea --prefix <dir> --cross-prefix <sdk>/aarch64-oclea-linux- --sysroot <dir>
 """
@@ -184,6 +185,8 @@ def ffmpeg_flags(args, prefix: Path, stdlib_flag: str) -> list:
         # comes from the hardware paths below, which are all LGPL-compatible.
         flags += ['--enable-version3']
         if args.platform == 'windows': flags += ['--enable-d3d11va', '--enable-dxva2']
+        # autodetect would link the libraries of a Nix or Homebrew PKG_CONFIG_PATH into the static libs
+        elif args.platform == 'macos': flags += ['--disable-autodetect', '--enable-pthreads', '--enable-videotoolbox']
         else:                          flags += ['--enable-vaapi', '--enable-vdpau', '--enable-libdrm']
     elif args.platform == 'oclea':
         # The DSP encodes the EO camera, so only the AT600 thermal camera encodes in software, in H.264
@@ -280,6 +283,15 @@ def build_linux(args, prefix: Path):
     install_ffmpeg(args, prefix, ffmpeg_flags(args, prefix, stdlib_flag), env)
 
 
+def build_macos(args, prefix: Path):
+    if not args.lgpl:
+        err('--platform macos supports --lgpl only: x264 and x265 have no macOS build path here.')
+        sys.exit(2)
+    stdlib_flag, _ = cxx_runtime(args.stdlib)
+    log(f'Building in {prefix} (cc={args.cc} cxx={args.cxx} profile=lgpl)')
+    install_ffmpeg(args, prefix, ffmpeg_flags(args, prefix, stdlib_flag), {**os.environ, 'TERM': 'dumb'})
+
+
 def build_oclea(args, prefix: Path):
     """The CV25 SDK ships FFmpeg 5 without libx264, so the thermal camera links this static FFmpeg 8."""
     if args.lgpl or not args.cross_prefix or not args.sysroot:
@@ -308,7 +320,7 @@ def install_ffmpeg(args, prefix: Path, flags: list, env: dict):
 
 def main():
     p = argparse.ArgumentParser(description='Build FFmpeg from source into a mama build dir')
-    p.add_argument('--platform', required=True, choices=['linux', 'windows', 'oclea', 'imx8mp'])
+    p.add_argument('--platform', required=True, choices=['linux', 'macos', 'windows', 'oclea', 'imx8mp'])
     p.add_argument('--prefix', required=True, help='install prefix, normally the mama build dir')
     p.add_argument('--src', help='existing FFmpeg source dir; cloned under --prefix when omitted')
     p.add_argument('--cc', default='gcc')
@@ -327,6 +339,7 @@ def main():
     for sub in ('', 'lib', 'include'): (prefix / sub).mkdir(parents=True, exist_ok=True)
 
     if args.platform == 'linux':     build_linux(args, prefix)
+    elif args.platform == 'macos':   build_macos(args, prefix)
     elif args.platform == 'windows': build_windows(args, prefix)
     elif args.platform == 'oclea':   build_oclea(args, prefix)
     else:
